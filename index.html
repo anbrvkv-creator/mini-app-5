@@ -77,6 +77,14 @@ details[open] summary::before{content:"– "}
 .btn:active{opacity:.8}
 .nothing{margin-top:4px;font-size:14px;color:var(--muted)}
 
+/* пост дня */
+.slabel{margin:18px 2px 8px;font:600 13px var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.today-post .card{margin-top:0;background:var(--paper);border:0;border-radius:20px;padding:18px}
+.today-post .card + .card{margin-top:10px}
+.today-post .card.is-pub{background:var(--sage-soft)}
+.today-post .cover{font-size:27px}
+.nopost{margin:0;padding:16px;border-radius:20px;border:1px dashed var(--line);color:var(--muted);font-size:15px}
+
 /* фокус */
 .focus{display:grid;gap:10px;margin-top:22px}
 .fcol{padding:16px;border-radius:20px;background:var(--paper)}
@@ -391,7 +399,7 @@ function renderToday(){
     var c=CODE[e.key], isDone, inner=null, cards=null;
     if(e.key==='instagram' && items.length){
       isDone=items.every(function(it){ return isPub(it.id); });
-      cards=items.map(cardHTML).join('');
+      inner='<span class="rhint">'+items.map(function(it){ return esc(coverOf(it)); }).join(' · ')+'</span>';
     } else if(e.key==='instagram'){
       isDone=chkHas(d,c);
       inner='<span class="rhint">В плане на этот день ничего нет</span>';
@@ -400,6 +408,9 @@ function renderToday(){
     rows+=rowHTML(e,isDone,inner,cards);
   });
   var total=entries.length||1;
+  h+='<h3 class="slabel">'+(d===TODAY?'Пост на сегодня':'Пост на этот день')+'</h3>';
+  h+= items.length ? '<div class="today-post">'+items.map(cardHTML).join('')+'</div>' : '<p class="nopost">На этот день поста в плане нет.</p>';
+  h+='<h3 class="slabel">Чек-лист дня</h3>';
   h+='<div class="progress"><span>Сделано '+done+' из '+entries.length+'</span><div class="bar"><i style="width:'+Math.round(done/total*100)+'%"></i></div></div>';
   h+='<ul class="check">'+rows+'</ul>';
 
