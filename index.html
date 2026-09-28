@@ -104,6 +104,19 @@ textarea{width:100%;min-height:92px;resize:vertical;border:1px solid var(--line)
 .idea div{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:13px;color:var(--muted)}
 .idea button{border:0;background:transparent;color:var(--muted);font-size:13px;padding:6px 0 6px 12px}
 
+/* текст поста */
+.ptext{margin:12px 0 0;white-space:pre-wrap;font-size:16px;line-height:1.5}
+.pq{margin:12px 0 0;font-weight:600}
+.pcta{margin:8px 0 0;color:var(--plum);font-size:15px}
+.edited{display:inline-block;margin-left:6px;padding:2px 8px;border-radius:999px;background:var(--plum-soft);color:var(--plum);font:600 12px var(--sans);vertical-align:middle}
+.panel.tall{top:calc(12px + env(safe-area-inset-top,0px));overflow:auto;-webkit-overflow-scrolling:touch}
+.ef{display:block;margin:12px 0 4px;font-size:13px;color:var(--muted)}
+.ef + textarea{min-height:0}
+.ecount{margin:6px 2px 0;font-size:13px;color:var(--muted)}
+.ecount.over{color:#8E3B2F;font-weight:600}
+.panel .ptop{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.xbtn{border:0;background:transparent;font-size:15px;color:var(--muted);padding:8px 0 8px 12px}
+
 /* план */
 .psum{margin:0 2px 4px;font-size:14px;color:var(--muted)}
 .month{margin-top:8px}
@@ -233,7 +246,7 @@ function plural(n,a,b,c){ var m=n%10, h=n%100; if(m===1&&h!==11) return a; if(m>
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 
 /* ---------- Состояние ---------- */
-var DATA=null, ST={pub:[],del:[],off:{}}, CHK={}, IDEAS=[];
+var DATA=null, ST={pub:[],del:[],off:{}}, CHK={}, IDEAS=[], EDITS={};
 var TAB='today', TODAY=todayISO(), CUR=TODAY;
 var view=document.getElementById('view'), tabs=document.getElementById('tabs'), fab=document.getElementById('fab'),
     sheet=document.getElementById('sheet'), toastEl=document.getElementById('toast');
@@ -244,6 +257,13 @@ function isDel(id){ return ST.del.indexOf(id)>-1; }
 function eff(it){ return addDays(it.date, ST.off[it.id]||0); }
 function byId(id){ for(var i=0;i<DATA.plan.length;i++) if(DATA.plan[i].id===id) return DATA.plan[i]; return null; }
 function dayItems(d){ return DATA.plan.filter(function(it){ return !isDel(it.id) && eff(it)===d; }); }
+function postOf(it){
+  var base=Object.assign({line:'',text:'',question:'',cta:''}, it.post||{}, {cover:it.cover});
+  return Object.assign(base, EDITS[it.id]||{});
+}
+function coverOf(it){ return postOf(it).cover; }
+function copyText(it){ var p=postOf(it); return [p.text,p.question,p.cta].filter(function(x){ return x && x.trim(); }).join('\n\n'); }
+function words(t){ t=(t||'').trim(); return t? t.split(/\s+/).length : 0; }
 function saveST(){ return store.set('st', JSON.stringify(ST)); }
 function saveCHK(){
   var min=addDays(TODAY,-45);
@@ -261,12 +281,14 @@ function init(){
     .then(function(d){ if(!d || !Array.isArray(d.plan)) throw new Error('bad data'); DATA=d; return store.keys(); })
     .then(function(keys){
       var ideaKeys=keys.filter(function(k){ return k.indexOf('i_')===0; });
-      return store.getMany(['st','chk','seeded'].concat(ideaKeys)).then(function(got){ return {got:got, ideaKeys:ideaKeys}; });
+      var postKeys=keys.filter(function(k){ return k.indexOf('p_')===0; });
+      return store.getMany(['st','chk','seeded'].concat(ideaKeys,postKeys)).then(function(got){ return {got:got, ideaKeys:ideaKeys, postKeys:postKeys}; });
     })
     .then(function(r){
       var got=r.got;
       try{ var s=JSON.parse(got.st||'null'); if(s){ ST.pub=s.pub||[]; ST.del=s.del||[]; ST.off=s.off||{}; } }catch(e){}
       try{ CHK=JSON.parse(got.chk||'null')||{}; }catch(e){ CHK={}; }
+      EDITS={}; r.postKeys.forEach(function(k){ try{ var o=JSON.parse(got[k]); if(o) EDITS[Number(k.slice(2))]=o; }catch(e){} });
       IDEAS=r.ideaKeys.map(function(k){ try{ var o=JSON.parse(got[k]); o.key=k; return o; }catch(e){ return null; } }).filter(Boolean);
       if(!got.seeded){
         (DATA.ideas||[]).forEach(function(x,i){
@@ -294,21 +316,29 @@ function render(){
 }
 
 function cardHTML(it){
-  var p=isPub(it.id), h='';
+  var p=isPub(it.id), po=postOf(it), ed=!!EDITS[it.id], h='';
   h+='<article class="card'+(p?' is-pub':'')+'">';
   h+='<div class="meta"><span class="chip">'+esc(it.format||'Публикация')+'</span>'+(it.rubric?'<span>'+esc(it.rubric)+'</span>':'')+'</div>';
   if(it.commercial) h+='<div class="com">'+esc(it.commercial.product)+': '+esc(it.commercial.role)+'</div>';
-  h+='<h2 class="cover">'+esc(it.cover)+'</h2>';
-  if(it.line) h+='<p class="quote">«'+esc(it.line)+'»</p>';
-  if(it.hook) h+='<p class="fld"><small>Крючок вслух</small>'+esc(it.hook)+'</p>';
-  if(it.turn||it.cta){
-    h+='<details><summary>Ход и призыв</summary>';
-    if(it.turn) h+='<p class="fld"><small>Поворот</small>'+esc(it.turn)+'</p>';
-    if(it.cta) h+='<p class="fld"><small>Вопрос или призыв</small>'+esc(it.cta)+'</p>';
+  h+='<h2 class="cover">'+esc(po.cover)+(ed?' <span class="edited">изменён</span>':'')+'</h2>';
+  if(po.line) h+='<p class="quote">'+esc(po.line)+'</p>';
+  if(po.text) h+='<p class="ptext">'+esc(po.text)+'</p>';
+  if(po.question) h+='<p class="pq">'+esc(po.question)+'</p>';
+  if(po.cta) h+='<p class="pcta">'+esc(po.cta)+'</p>';
+  if(it.note) h+='<p class="note">'+esc(it.note)+'</p>';
+  var pl=it.plan||{};
+  if(pl.hook||pl.turn){
+    h+='<details><summary>Задумка из контент-плана</summary>';
+    if(pl.cover && pl.cover!==po.cover) h+='<p class="fld"><small>Обложка в плане</small>'+esc(pl.cover)+'</p>';
+    if(pl.hook) h+='<p class="fld"><small>Крючок вслух</small>'+esc(pl.hook)+'</p>';
+    if(pl.turn) h+='<p class="fld"><small>Поворот</small>'+esc(pl.turn)+'</p>';
+    if(pl.cta) h+='<p class="fld"><small>Вопрос или призыв</small>'+esc(pl.cta)+'</p>';
     h+='</details>';
   }
-  if(it.note) h+='<p class="note">'+esc(it.note)+'</p>';
-  h+='<div class="actions"><button class="btn primary" data-act="pub" data-id="'+it.id+'" aria-pressed="'+p+'">'+(p?'✓ Опубликовано':'Опубликовано')+'</button>';
+  h+='<div class="actions">';
+  if(po.text) h+='<button class="btn half" data-act="copy" data-id="'+it.id+'">Скопировать</button>';
+  h+='<button class="btn half" data-act="edit" data-id="'+it.id+'">Редактировать</button>';
+  h+='<button class="btn primary" data-act="pub" data-id="'+it.id+'" aria-pressed="'+p+'">'+(p?'✓ Опубликовано':'Опубликовано')+'</button>';
   if(!p) h+='<button class="btn half" data-act="shift" data-id="'+it.id+'">Сдвинуть хвост</button><button class="btn half danger" data-act="del" data-id="'+it.id+'">Удалить</button>';
   h+='</div></article>';
   return h;
@@ -400,7 +430,7 @@ function renderPlan(){
       h+='<li'+(prevWeek&&wk!==prevWeek?' class="wk"':'')+'><button class="'+cls+'" data-act="go" data-d="'+x.d+'"'+(it.id===anchor?' id="planAnchor"':'')+'>'+
         '<time><b>'+dt.getUTCDate()+'</b><span>'+WS[dt.getUTCDay()]+'</span></time>'+
         '<span class="pbody"><span class="pfmt">'+esc(it.format)+(it.rubric?', '+esc(it.rubric.toLowerCase()):'')+'</span>'+
-        '<span class="pcover">'+esc(it.cover)+'</span>'+
+        '<span class="pcover">'+esc(coverOf(it))+'</span>'+
         (it.commercial?'<span class="pcom">'+esc(it.commercial.product)+': '+esc(it.commercial.role)+'</span>':'')+
         (it.note&&!p?'<span class="pnote">'+esc(it.note)+'</span>':'')+'</span>'+
         '<span class="pst" aria-label="'+(p?'опубликовано':late?'не отмечено':'запланировано')+'">'+(p?'✓':late?'!':'')+'</span></button></li>';
@@ -427,10 +457,10 @@ function renderIdeas(){
 }
 
 /* ---------- Лист и уведомления ---------- */
-function openSheet(html){
-  sheet.innerHTML='<div class="scrim" data-act="close"></div><div class="panel" role="dialog" aria-modal="true">'+html+'</div>';
+function openSheet(html,tall){
+  sheet.innerHTML='<div class="scrim" data-act="close"></div><div class="panel'+(tall?' tall':'')+'" role="dialog" aria-modal="true">'+html+'</div>';
   sheet.hidden=false;
-  var f=sheet.querySelector('textarea,.btn'); if(f) f.focus();
+  if(!tall){ var f=sheet.querySelector('textarea,.btn'); if(f) f.focus(); }
 }
 function closeSheet(){ sheet.hidden=true; sheet.innerHTML=''; }
 var toastTimer=null, toastFn=null;
@@ -447,6 +477,39 @@ function addIdea(text){
   var now=Date.now(), key='i_'+now.toString(36), o={t:text,c:TODAY,s:now};
   IDEAS.push(Object.assign({key:key},o)); store.set(key, JSON.stringify(o));
   return true;
+}
+
+/* ---------- Редактор и копирование ---------- */
+function field(id,label,val,rows,max){
+  return '<label class="ef" for="e_'+id+'">'+label+'</label><textarea id="e_'+id+'" rows="'+rows+'" maxlength="'+max+'">'+esc(val)+'</textarea>';
+}
+function openEditor(it){
+  var p=postOf(it);
+  var h='<div class="ptop"><h2>Редактировать пост</h2><button class="xbtn" data-act="close">Закрыть</button></div>';
+  h+=field('cover','Обложка',p.cover,2,200)+field('line','Реплика на обложку',p.line,2,300)+
+     field('text','Текст поста',p.text,14,2800)+'<p class="ecount" id="ecount"></p>'+
+     field('question','Вопрос в конце',p.question,2,300)+field('cta','Призыв',p.cta,2,300);
+  h+='<div class="actions"><button class="btn primary" data-act="saveEdit" data-id="'+it.id+'">Сохранить</button>';
+  if(EDITS[it.id]) h+='<button class="btn half" data-act="resetEdit" data-id="'+it.id+'">Вернуть исходный</button>';
+  h+='<button class="btn half" data-act="close">Отмена</button></div>';
+  openSheet(h,true);
+  var upd=function(){
+    var n=words(document.getElementById('e_text').value+' '+document.getElementById('e_question').value), el=document.getElementById('ecount');
+    el.textContent=n+' '+plural(n,'слово','слова','слов')+', это примерно '+Math.max(1,Math.round(n/2.5))+' сек. начитки'+(n>150?'. Длиннее 150 слов':'');
+    el.className='ecount'+(n>150?' over':'');
+  };
+  ['e_text','e_question'].forEach(function(k){ document.getElementById(k).addEventListener('input',upd); });
+  upd();
+}
+function copyToClipboard(t){
+  function fallback(){
+    try{ var ta=document.createElement('textarea'); ta.value=t; ta.setAttribute('readonly',''); ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0,t.length); var ok=document.execCommand('copy'); document.body.removeChild(ta); return ok; }catch(e){ return false; }
+  }
+  if(navigator.clipboard && window.isSecureContext){
+    return navigator.clipboard.writeText(t).then(function(){ return true; },function(){ return fallback(); });
+  }
+  return Promise.resolve(fallback());
 }
 
 /* ---------- Действия ---------- */
@@ -482,7 +545,7 @@ document.addEventListener('click',function(ev){
       var aff=DATA.plan.filter(function(x){ return !isDel(x.id) && !isPub(x.id) && eff(x)>=from; });
       var last=aff.reduce(function(m,x){ var e=eff(x); return e>m?e:m; }, from);
       var others=aff.length-1;
-      openSheet('<h2>Сдвинуть хвост на день?</h2><p>«'+esc(it.cover)+'» переедет на '+longD(addDays(from,1))+
+      openSheet('<h2>Сдвинуть хвост на день?</h2><p>«'+esc(coverOf(it))+'» переедет на '+longD(addDays(from,1))+
         (others>0?', и вместе с ней ещё '+others+' '+plural(others,'публикация','публикации','публикаций')+' после неё':'')+
         '. Последняя окажется на '+longD(addDays(last,1))+'.</p>'+
         '<div class="actions"><button class="btn primary" data-act="doShift" data-id="'+id+'">Сдвинуть</button><button class="btn half" data-act="close">Отмена</button></div>');
@@ -498,7 +561,7 @@ document.addEventListener('click',function(ev){
     }
     case 'del': {
       var it3=byId(id);
-      openSheet('<h2>Удалить публикацию?</h2><p>«'+esc(it3.cover)+'» исчезнет из плана. День останется пустым, остальные публикации не сдвинутся.</p>'+
+      openSheet('<h2>Удалить публикацию?</h2><p>«'+esc(coverOf(it3))+'» исчезнет из плана. День останется пустым, остальные публикации не сдвинутся.</p>'+
         '<div class="actions"><button class="btn primary" style="background:#8E3B2F" data-act="doDel" data-id="'+id+'">Удалить</button><button class="btn half" data-act="close">Отмена</button></div>');
       break;
     }
@@ -510,6 +573,28 @@ document.addEventListener('click',function(ev){
     case 'restoreDel': {
       var was=ST.del.slice(); ST.del=[]; saveST(); render();
       toast('Вернула в план: '+was.length,'Отменить',function(){ ST.del=was; saveST(); render(); });
+      break;
+    }
+    case 'copy': {
+      var txt=copyText(byId(id));
+      copyToClipboard(txt).then(function(ok){ haptic(ok?'ok':''); toast(ok?'Текст поста скопирован':'Не получилось скопировать. Выдели текст вручную.'); });
+      break;
+    }
+    case 'edit': openEditor(byId(id)); break;
+    case 'saveEdit': {
+      var itE=byId(id), orig=Object.assign({line:'',text:'',question:'',cta:''}, itE.post||{}, {cover:itE.cover}), o={}, changed=false;
+      ['cover','line','text','question','cta'].forEach(function(f){ var v=document.getElementById('e_'+f).value; o[f]=v; if(v!==(orig[f]||'')) changed=true; });
+      if(changed){
+        var js=JSON.stringify(o);
+        if(js.length>4000){ toast('Текст слишком длинный для сохранения. Сократи немного.'); break; }
+        EDITS[id]=o; store.set('p_'+id, js);
+      } else if(EDITS[id]){ delete EDITS[id]; store.del('p_'+id); }
+      closeSheet(); haptic('ok'); render(); toast('Сохранено');
+      break;
+    }
+    case 'resetEdit': {
+      var prevE=EDITS[id]; delete EDITS[id]; store.del('p_'+id); closeSheet(); render();
+      toast('Вернула исходный текст','Отменить',function(){ EDITS[id]=prevE; store.set('p_'+id, JSON.stringify(prevE)); render(); });
       break;
     }
     case 'close': closeSheet(); break;
