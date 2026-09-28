@@ -104,6 +104,31 @@ textarea{width:100%;min-height:92px;resize:vertical;border:1px solid var(--line)
 .idea div{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:13px;color:var(--muted)}
 .idea button{border:0;background:transparent;color:var(--muted);font-size:13px;padding:6px 0 6px 12px}
 
+/* план */
+.psum{margin:0 2px 4px;font-size:14px;color:var(--muted)}
+.month{margin-top:8px}
+.mhead{position:sticky;top:env(safe-area-inset-top,0px);z-index:2;background:var(--bg);margin:0;padding:14px 2px 8px;font:500 22px/1.2 var(--serif);display:flex;justify-content:space-between;align-items:baseline}
+.mhead span{font:14px var(--sans);color:var(--muted)}
+.plist{list-style:none;margin:0;padding:0;background:var(--paper);border-radius:20px;overflow:hidden}
+.plist li+li{border-top:1px solid var(--line)}
+.plist li.wk{border-top:6px solid var(--bg)}
+.prow{display:flex;gap:14px;width:100%;text-align:left;border:0;background:transparent;padding:12px 14px;align-items:flex-start;scroll-margin-top:calc(60px + env(safe-area-inset-top,0px))}
+.prow:active{background:var(--line)}
+.prow time{flex:none;width:34px;text-align:center}
+.prow time b{display:block;font:500 21px/1.1 var(--serif)}
+.prow time span{font-size:12px;color:var(--muted)}
+.pbody{flex:1;min-width:0}
+.pfmt{font-size:13px;color:var(--muted)}
+.pcover{display:block;margin-top:2px;font-size:16px;line-height:1.35}
+.pcom{display:block;margin-top:4px;font-size:13px;color:var(--plum)}
+.pnote{display:block;margin-top:4px;font-size:13px;color:var(--warn)}
+.pst{flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;margin-top:2px}
+.prow.pub .pst{background:var(--sage);color:#fff}
+.prow.pub .pcover{color:var(--muted)}
+.prow.late .pst{background:var(--warn-soft);color:var(--warn)}
+.prow.now{background:#FFFBF5;box-shadow:inset 3px 0 0 var(--plum)}
+.restore{display:block;margin:18px auto 0}
+
 /* оболочка */
 .tabs{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:center;gap:4px;padding:8px 16px calc(8px + env(safe-area-inset-bottom,0px));background:rgba(237,227,214,.94);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--line);z-index:5}
 .tab{flex:1;max-width:200px;border:0;border-radius:12px;padding:10px;background:transparent;color:var(--muted);font-weight:600}
@@ -132,6 +157,7 @@ textarea{width:100%;min-height:92px;resize:vertical;border:1px solid var(--line)
 <main id="view" aria-live="polite"></main>
 <nav class="tabs" id="tabs" hidden>
   <button class="tab" data-act="tab" data-t="today">Сегодня</button>
+  <button class="tab" data-act="tab" data-t="plan">План</button>
   <button class="tab" data-act="tab" data-t="ideas">Идеи</button>
 </nav>
 <button class="fab" id="fab" data-act="ideaSheet" hidden>+ идея</button>
@@ -264,7 +290,7 @@ function render(){
     if(b.dataset.t===TAB) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current');
   });
   fab.hidden = TAB!=='today';
-  if(TAB==='today') renderToday(); else renderIdeas();
+  if(TAB==='today') renderToday(); else if(TAB==='plan') renderPlan(); else renderIdeas();
 }
 
 function cardHTML(it){
@@ -352,6 +378,41 @@ function renderToday(){
   view.innerHTML=h;
 }
 
+var WS=['вс','пн','вт','ср','чт','пт','сб'];
+var MN=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+function renderPlan(){
+  var live=DATA.plan.filter(function(it){ return !isDel(it.id); })
+    .map(function(it){ return {it:it,d:eff(it)}; })
+    .sort(function(a,b){ return a.d<b.d?-1:a.d>b.d?1:a.it.id-b.it.id; });
+  var pubN=live.filter(function(x){ return isPub(x.it.id); }).length;
+  var h='<header class="ptitle"><h1>План</h1><span>'+live.length+'</span></header>';
+  h+='<p class="psum">Опубликовано '+pubN+' из '+live.length+'. Нажми на публикацию, чтобы открыть её день.</p>';
+  var anchor=null; for(var i=0;i<live.length;i++){ if(live[i].d>=TODAY){ anchor=live[i].it.id; break; } }
+  var months=[], mi={};
+  live.forEach(function(x){ var m=x.d.slice(0,7); if(!(m in mi)){ mi[m]=months.length; months.push({m:m,rows:[]}); } months[mi[m]].rows.push(x); });
+  months.forEach(function(g){
+    var mp=Number(g.m.slice(5,7))-1, done=g.rows.filter(function(x){ return isPub(x.it.id); }).length;
+    h+='<section class="month"><h2 class="mhead">'+MN[mp]+'<span>'+done+' из '+g.rows.length+'</span></h2><ul class="plist">';
+    var prevWeek=null;
+    g.rows.forEach(function(x){
+      var it=x.it, p=isPub(it.id), late=!p && x.d<TODAY, dt=toUTC(x.d), wk=weekStart(x.d);
+      var cls='prow'+(p?' pub':'')+(late?' late':'')+(x.d===TODAY?' now':'');
+      h+='<li'+(prevWeek&&wk!==prevWeek?' class="wk"':'')+'><button class="'+cls+'" data-act="go" data-d="'+x.d+'"'+(it.id===anchor?' id="planAnchor"':'')+'>'+
+        '<time><b>'+dt.getUTCDate()+'</b><span>'+WS[dt.getUTCDay()]+'</span></time>'+
+        '<span class="pbody"><span class="pfmt">'+esc(it.format)+(it.rubric?', '+esc(it.rubric.toLowerCase()):'')+'</span>'+
+        '<span class="pcover">'+esc(it.cover)+'</span>'+
+        (it.commercial?'<span class="pcom">'+esc(it.commercial.product)+': '+esc(it.commercial.role)+'</span>':'')+
+        (it.note&&!p?'<span class="pnote">'+esc(it.note)+'</span>':'')+'</span>'+
+        '<span class="pst" aria-label="'+(p?'опубликовано':late?'не отмечено':'запланировано')+'">'+(p?'✓':late?'!':'')+'</span></button></li>';
+      prevWeek=wk;
+    });
+    h+='</ul></section>';
+  });
+  if(ST.del.length) h+='<button class="link restore" data-act="restoreDel">Вернуть удалённые: '+ST.del.length+'</button>';
+  view.innerHTML=h;
+  var a=document.getElementById('planAnchor'); if(a) a.scrollIntoView({block:'start'});
+}
+
 function renderIdeas(){
   var prev=document.getElementById('ideaInput'), keep=prev?prev.value:'';
   var list=IDEAS.slice().sort(function(a,b){ return (b.s||0)-(a.s||0); });
@@ -394,10 +455,10 @@ document.addEventListener('click',function(ev){
   var act=el.dataset.act, id=el.dataset.id?Number(el.dataset.id):null;
   switch(act){
     case 'retry': init(); break;
-    case 'tab': TAB=el.dataset.t; render(); window.scrollTo(0,0); break;
+    case 'tab': TAB=el.dataset.t; window.scrollTo(0,0); render(); break;
     case 'prev': CUR=addDays(CUR,-1); haptic(); render(); break;
     case 'next': CUR=addDays(CUR,1); haptic(); render(); break;
-    case 'go': CUR=el.dataset.d; render(); window.scrollTo(0,0); break;
+    case 'go': CUR=el.dataset.d; TAB='today'; render(); window.scrollTo(0,0); break;
 
     case 'chk': {
       var c=el.dataset.c, items=dayItems(CUR);
@@ -444,6 +505,11 @@ document.addEventListener('click',function(ev){
     case 'doDel': {
       ST.del.push(id); saveST(); closeSheet(); render();
       toast('Публикация удалена','Вернуть',function(){ var i=ST.del.indexOf(id); if(i>-1) ST.del.splice(i,1); saveST(); render(); });
+      break;
+    }
+    case 'restoreDel': {
+      var was=ST.del.slice(); ST.del=[]; saveST(); render();
+      toast('Вернула в план: '+was.length,'Отменить',function(){ ST.del=was; saveST(); render(); });
       break;
     }
     case 'close': closeSheet(); break;
